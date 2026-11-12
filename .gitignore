@@ -17,11 +17,13 @@ models/*.bin
 models/*.safetensors
 
 # Логи
-logs/
+logs/*
+!logs/.gitkeep
 *.log
 
 # Данные (SMB-шара монтируется)
-data/
+data/*
+!data/.gitkeep
 
 # Бэкапы (создаются при патче/установке)
 *.bak

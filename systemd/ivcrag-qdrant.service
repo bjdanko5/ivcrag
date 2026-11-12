@@ -1,0 +1,14 @@
+[Unit]
+Description=ivcrag Qdrant (docker)
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/docker start ivcrag-qdrant
+ExecStop=/usr/bin/docker stop ivcrag-qdrant
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

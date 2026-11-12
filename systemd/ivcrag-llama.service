@@ -1,0 +1,14 @@
+[Unit]
+Description=ivcrag llama.cpp server (docker)
+After=docker.service network-online.target ivcrag-qdrant.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/docker start micro-llm
+ExecStop=/usr/bin/docker stop micro-llm
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

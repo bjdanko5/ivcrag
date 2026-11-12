@@ -1,0 +1,40 @@
+project:
+  name: ivcrag
+  root: /home/user/ivcrag
+
+ports:
+  rag_server: 8091
+  llama_server: 8082
+  qdrant_http: 6333
+  qdrant_grpc: 6334
+
+models:
+  llm_gguf: Qwen_Qwen3-0.6B-Q4_K_M.gguf
+  llm_url: https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/main/Qwen_Qwen3-0.6B-Q4_K_M.gguf
+  embedding: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+  embed_backend: fastembed
+
+qdrant:
+  collection: allm_docs
+  host: localhost
+  vector_size: 384
+  hybrid: true
+
+paths:
+  docs_source: /home/user/allm
+  models_dir: /home/user/ivcrag/models
+  logs_dir: /home/user/ivcrag/logs
+  venv: /home/user/ivcrag/venv
+
+server:
+  host: 0.0.0.0
+  top_k: 10
+  max_context_chars: 1500
+  max_answer_tokens: 256
+  log_level: info
+
+docker:
+  llama_image: ghcr.io/ggml-org/llama.cpp:server
+  llama_container: micro-llm
+  qdrant_image: qdrant/qdrant:latest
+  qdrant_container: ivcrag-qdrant

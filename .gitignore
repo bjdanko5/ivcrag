@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# venv
+venv/
+.venv/
+
+# Секреты (реальные значения — в .env, не в git)
+.env
+
+# Модели (484 МБ, скачиваются)
+models/*.gguf
+models/*.bin
+models/*.safetensors
+
+# Логи
+logs/
+*.log
+
+# Данные (SMB-шара монтируется)
+data/
+
+# Бэкапы (создаются при патче/установке)
+*.bak
+*.bak.*
+*.old
+*.old.*
+
+# Временные
+*.tmp
+*.swp
+*~
+
+# Docker (если будете делать compose)
+# docker-compose.override.yml

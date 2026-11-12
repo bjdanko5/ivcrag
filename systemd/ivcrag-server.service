@@ -1,0 +1,19 @@
+[Unit]
+Description=ivcrag RAG server (embedding_server.py)
+After=network-online.target ivcrag-qdrant.service ivcrag-llama.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=user
+WorkingDirectory=/home/user/ivcrag
+Environment=IVCRAG_CFG=/home/user/ivcrag/config.yaml
+EnvironmentFile=-/home/user/ivcrag/.env
+ExecStart=/home/user/ivcrag/venv/bin/python /home/user/ivcrag/app/embedding_server.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/home/user/ivcrag/logs/server.log
+StandardError=append:/home/user/ivcrag/logs/server.err.log
+
+[Install]
+WantedBy=multi-user.target

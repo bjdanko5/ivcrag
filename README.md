@@ -1,5 +1,8 @@
 # ivcrag - RAG-сервис телефонного справочника
 
+[![GitHub](https://img.shields.io/badge/github-bjdanko5%2Fivcrag-blue?logo=github)](https://github.com/bjdanko5/ivcrag)
+
+
 OpenAI-совместимый API + встроенный UI на http://<host>:8091.
 
 ## Быстрый старт
@@ -129,6 +132,32 @@ logs/, data/ (пустые), __pycache__/.
 
     IVCRAG_PIP_MIRROR=https://pypi.org/simple bash scripts/install_python.sh
 
+
+### Деплой через GitHub (альтернатива tar и локальному bare-репо)
+
+Репозиторий: https://github.com/bjdanko5/ivcrag
+
+**На новом хосте:**
+
+    git clone git@github.com:bjdanko5/ivcrag.git
+    cd ivcrag
+    cp .env.example .env       # вписать HF_TOKEN (и SMB_*, если нужно)
+    bash install_ivcrag.sh --dry-run
+    bash install_ivcrag.sh --yes
+
+Установщик сам: venv, модели, qdrant, llama, systemd, smoke.
+
+**Обновить существующий деплой:**
+
+    cd ivcrag
+    git pull origin main
+    sudo systemctl restart ivcrag-server
+
+**Версии (теги):**
+
+    git tag -n                              # список
+    git checkout v0.1.0                     # откат на версию
+    git clone --branch v0.1.0 git@github.com:bjdanko5/ivcrag.git
 
 ## Документация
 

@@ -257,3 +257,41 @@ Qwen3-0.6B-Q4_K_M осталась в models/ (если скачивали ра�
     sudo systemctl restart ivcrag-server
 
 НО: 0.6B не обобщает таблицы - аналитические вопросы будут возвращать "нет информации".
+
+## Сканирование документов (scan) — v0.3.2+
+
+В `config.yaml` добавлена секция `scan:`:
+
+    scan:
+      method: mtime            # md5 | mtime
+      persist: true            # data/hashes.json
+      reindex_on_start: false  # true = старое поведение (переиндексация всех)
+      interval: 300
+      hashes_file: /home/user/ivcrag/data/hashes.json
+
+### Что это даёт
+
+- **`reindex_on_start: false`** — при старте сервер загружает хеши из `data/hashes.json`
+  и переиндексирует ТОЛЬКО изменённые файлы. Старт: ~5 сек вместо ~60.
+- **`persist: true`** — `file_hashes` сохраняются в `data/hashes.json` после каждого скана.
+  Без этого при рестарте ВСЕ файлы считаются новыми -> переиндексация всех.
+- **`method: mtime`** — `get_file_hash` = `{mtime_ns}_{size}` (быстро, `stat`, без чтения).
+  **`method: md5`** — MD5 (надёжно, но читает весь файл).
+- **`interval: 300`** — `periodic_scan` раз в 5 минут (проверка изменений, без полной переиндексации).
+
+### Ручная переиндексация
+
+    curl -s -X POST http://localhost:8091/scan | python3 -m json.tool
+
+### Если нужно "забыть" хеши (переиндексировать всё)
+
+    rm -f ~/ivcrag/data/hashes.json
+    sudo systemctl restart ivcrag-server
+
+### Ограничения
+
+- `mtime` не заметит изменения, если файл изменён с сохранением mtime (редко).
+  Тогда - `method: md5`.
+- `hashes.json` НЕ в git (`.gitignore`: `data/*` + `!data/.gitkeep`).
+  После `git clone` - создаётся автоматически при первом скане.
+- `~$...` (временные файлы Word/Excel) исключены из индексации (по `~$` в имени).

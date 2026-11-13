@@ -13,5 +13,5 @@ docker rm -f "$NAME" >/dev/null 2>&1 || true
 docker run -d --name "$NAME" --restart unless-stopped \
   -p "$LLMP:8080" \
   -v "$MDIR:/models:ro" \
-  "$IMG" -m "/models/$GGUF" --host 0.0.0.0 --port 8080 -c 4096
+  "$IMG" -m "/models/$GGUF" --host 0.0.0.0 --port 8080 -c 4096 --jinja
 echo "  [done] $NAME started"

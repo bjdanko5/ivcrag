@@ -166,11 +166,12 @@ logs/, data/ (пустые), __pycache__/.
 - PyTorch: НЕ нужен (см. MIGRATION.md)
 
 
-## Статус на a3linux (2026-11-12)
+## Статус на a3linux (v0.3.0, 2026-11-13)
 
-- systemd: ivcrag-qdrant (active exited), ivcrag-llama (active exited), ivcrag-server (active running)
-- /health: status ok, model_loaded true, qdrant_connected true, redis_connected true, tracked_files 6
-- UI: HTTP 200
+- Модель: **Qwen2.5-1.5B-Instruct-Q4_K_M** (--jinja)
+- SYSTEM_PROMPT с {context} + {question} — LLM видит контекст
+- top_k: 20, max_context_chars: 3000
+- Аналитические вопросы («УЗ1», «классы», «уровень значимости») — отвечаются
+- Прямые ответы («тел Жданко», «тел АУО», «Кто в ИТ») — работают
 - smoke: PASS=7 FAIL=0
-- docker: qdrant (Up), micro-llm (Up, healthy), embed (Up, healthy)
-- llama :8082/health -> {"status":"ok"}
+- GitHub: v0.3.0

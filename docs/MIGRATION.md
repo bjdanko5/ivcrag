@@ -187,3 +187,9 @@ torch НЕ включаем (CPU без AVX -> Illegal instruction).
 ### Проверка health (любой вариант)
 
     curl.exe -s http://192.168.10.21:8091/health
+
+## Модель LLM (v0.3.0)
+
+Используется **Qwen2.5-1.5B-Instruct-Q4_K_M** (Q4_K_M, ~1 ГБ, RAM 11 ГБ свободно).
+Запуск: llama.cpp:server с `--jinja` (поддержка `chat_template_kwargs.enable_thinking=false`).
+Файл: `~/ivcrag/models/qwen2.5-1.5b-instruct-q4_k_m.gguf`.

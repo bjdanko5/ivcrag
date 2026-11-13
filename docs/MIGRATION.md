@@ -193,3 +193,67 @@ torch НЕ включаем (CPU без AVX -> Illegal instruction).
 Используется **Qwen2.5-1.5B-Instruct-Q4_K_M** (Q4_K_M, ~1 ГБ, RAM 11 ГБ свободно).
 Запуск: llama.cpp:server с `--jinja` (поддержка `chat_template_kwargs.enable_thinking=false`).
 Файл: `~/ivcrag/models/qwen2.5-1.5b-instruct-q4_k_m.gguf`.
+
+## Модель LLM (v0.3.0+)
+
+Используется **Qwen2.5-1.5B-Instruct-Q4_K_M** (~1 ГБ, Q4_K_M):
+- лучше обобщает таблицы и списки, чем Qwen3-0.6B;
+- отвечает на аналитические вопросы («УЗ1», «какие бывают классы защищенности», «что определяет уровень значимости»).
+
+### Скачать модель (обязательно после git clone)
+
+    cd ~/ivcrag/models
+    wget -O qwen2.5-1.5b-instruct-q4_k_m.gguf \
+      https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf
+
+или через зеркало:
+
+    wget -O qwen2.5-1.5b-instruct-q4_k_m.gguf \
+      https://hf-mirror.com/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf
+
+### Запуск llama.cpp с --jinja (обязательно для 1.5B)
+
+`--jinja` включает поддержку `chat_template_kwargs.enable_thinking=false`
+(иначе модель уходит в thinking-режим и `content` пустой).
+
+В `scripts/run_llama.sh` строка запуска:
+
+    "$IMG" -m "/models/$GGUF" --host 0.0.0.0 --port 8080 -c 4096 --jinja
+
+Если контейнер уже создан без --jinja - пересоздать:
+
+    docker rm -f micro-llm
+    docker run -d --name micro-llm --restart unless-stopped \
+      -p 8082:8080 \
+      -v ~/ivcrag/models:/models:ro \
+      ghcr.io/ggml-org/llama.cpp:server \
+      -m /models/qwen2.5-1.5b-instruct-q4_k_m.gguf \
+      --host 0.0.0.0 --port 8080 -c 4096 --jinja
+
+### Проверка
+
+    curl -s http://localhost:8082/health
+    curl -s http://localhost:8082/v1/models | python3 -m json.tool | grep -E "model|name"
+
+Ожидается: {"status":"ok"} и имя qwen2.5-1.5b-instruct-q4_k_m.gguf.
+
+### Требования к RAM
+
+- Qwen2.5-1.5B-Instruct-Q4_K_M: ~1.5-2 ГБ (плюс fastembed, qdrant, RAG-контекст)
+- Рекомендуется >= 4 ГБ свободной RAM
+- На a3linux: 15 ГБ total, 11 ГБ available - 1.5B влезает с запасом
+
+### Старая модель (0.6B)
+
+Qwen3-0.6B-Q4_K_M осталась в models/ (если скачивали ранее).
+Переключиться обратно:
+
+    # в config.yaml:
+    llm_gguf: Qwen_Qwen3-0.6B-Q4_K_M.gguf
+    llm_url: https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/main/Qwen_Qwen3-0.6B-Q4_K_M.gguf
+
+    docker rm -f micro-llm
+    docker run -d --name micro-llm ... -m /models/Qwen_Qwen3-0.6B-Q4_K_M.gguf ... --jinja
+    sudo systemctl restart ivcrag-server
+
+НО: 0.6B не обобщает таблицы - аналитические вопросы будут возвращать "нет информации".

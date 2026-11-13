@@ -38,3 +38,10 @@ docker:
   llama_container: micro-llm
   qdrant_image: qdrant/qdrant:latest
   qdrant_container: ivcrag-qdrant
+
+scan:
+  method: mtime            # md5 | mtime
+  persist: true            # data/hashes.json
+  reindex_on_start: false  # true = старое поведение (переиндексация всех)
+  interval: 300
+  hashes_file: /home/user/ivcrag/data/hashes.json

@@ -72,7 +72,12 @@ DOCS_DIR = Path("/home/user/allm")
 CHUNK_SIZE = 1200
 CHUNK_OVERLAP = 200
 BATCH_SIZE = 16
-SCAN_INTERVAL = 300
+SCAN_METHOD = _c("scan", "method", default="mtime")           # md5 | mtime
+SCAN_PERSIST = bool(_c("scan", "persist", default=True))
+SCAN_REINDEX_ON_START = bool(_c("scan", "reindex_on_start", default=False))
+SCAN_HASHES_FILE = Path(_c("scan", "hashes_file",
+                           default=str(Path.home() / "ivcrag" / "data" / "hashes.json")))
+SCAN_INTERVAL = int(_c("scan", "interval", default=300))
 
 IGNORE_DIRS = {
     "venv", ".venv", "env", "__pycache__", "tmp", "temp",
@@ -131,6 +136,33 @@ qdrant_client: Optional[QdrantClient] = None
 r_client: Optional[redis.Redis] = None
 
 file_hashes: Dict[Path, str] = {}
+
+def _load_hashes():
+    """Загружает хеши файлов из SCAN_HASHES_FILE (если SCAN_PERSIST)."""
+    global file_hashes
+    if not SCAN_PERSIST:
+        log.info("[hashes] persist=false — хеши не загружаются")
+        return
+    if not SCAN_HASHES_FILE.exists():
+        log.info(f"[hashes] {SCAN_HASHES_FILE} не найден — будет первичная индексация")
+        return
+    try:
+        raw = _json.loads(SCAN_HASHES_FILE.read_text(encoding="utf-8"))
+        file_hashes = {Path(k): v for k, v in raw.items()}
+        log.info(f"[hashes] Загружено {len(file_hashes)} хешей из {SCAN_HASHES_FILE}")
+    except Exception as e:
+        log.warning(f"[hashes] load failed: {e}")
+
+def _save_hashes():
+    """Сохраняет хеши файлов в SCAN_HASHES_FILE (если SCAN_PERSIST)."""
+    if not SCAN_PERSIST:
+        return
+    try:
+        SCAN_HASHES_FILE.parent.mkdir(parents=True, exist_ok=True)
+        raw = {str(k): v for k, v in file_hashes.items()}
+        SCAN_HASHES_FILE.write_text(_json.dumps(raw, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception as e:
+        log.warning(f"[hashes] save failed: {e}")
 
 
 # ==========================================
@@ -447,15 +479,26 @@ def chunk_text(text: str, max_chars: int, overlap: int) -> List[str]:
 
 
 def get_file_hash(path: Path) -> str:
+    """Возвращает 'хеш' файла: mtime_ns+size (быстро) или md5 (надёжно)."""
+    if SCAN_METHOD == "mtime":
+        try:
+            st = path.stat()
+            h = f"{st.st_mtime_ns}_{st.st_size}"
+            log.debug(f"[get_file_hash] {path.name} (mtime) -> {h}")
+            return h
+        except Exception as e:
+            log.error(f"[get_file_hash] stat {path.name}: {e}")
+            return ""
+    # md5
     hasher = hashlib.md5()
     try:
         with open(path, "rb") as f:
             hasher.update(f.read())
         h = hasher.hexdigest()
-        log.debug(f"[get_file_hash] {path.name} -> {h[:12]}…")
+        log.debug(f"[get_file_hash] {path.name} (md5) -> {h[:12]}…")
         return h
     except Exception as e:
-        log.error(f"[get_file_hash] Не удалось прочитать {path.name}: {e}")
+        log.error(f"[get_file_hash] md5 {path.name}: {e}")
         return ""
 
 
@@ -608,6 +651,7 @@ def scan_docs_dir() -> dict:
         "total_tracked": len(file_hashes),
     }
     log.debug(f"[scan_docs_dir] Итог прохода: {summary}")
+    _save_hashes()
     return summary
 
 
@@ -692,6 +736,11 @@ async def lifespan(app: FastAPI):
         log.info(f"[lifespan] Коллекция {COLLECTION_NAME} существует, точек: {info.points_count}")
 
     log.info("[lifespan] Запуск фонового сканирования...")
+    if SCAN_REINDEX_ON_START:
+        log.info("[lifespan] reindex_on_start=true — file_hashes сбрасываются (переиндексация всех)")
+        file_hashes.clear()
+    else:
+        _load_hashes()
     scan_task = asyncio.create_task(periodic_scan())
     log.info(f"[lifespan] Задача создана: {scan_task}")
 

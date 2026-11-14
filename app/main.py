@@ -1,7 +1,10 @@
-"""Application compatibility entry point.
+"""Backward-compatible application entry point.
 
-The application factory and router wiring live in :mod:`app.bootstrap`.
+Legacy scripts import ``app.main`` for the FastAPI app and HTML payload.
+The runtime wiring now lives in ``app.bootstrap`` and the browser HTML in
+``app.ui``.
 """
 from app.bootstrap import app
+from app.ui import HTML_INDEX
 
-__all__ = ["app"]
+__all__ = ["app", "HTML_INDEX"]

@@ -6,7 +6,7 @@ import requests
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from qdrant_client import models
 
-from app import config, state
+from app.state import config, state
 from app.ingestion.scanner import scan_docs_dir
 from app.schemas import EmbedRequest, EmbedResponse
 
@@ -105,7 +105,7 @@ def background_rag_pipeline(task_id: str):
 async def embed(request: EmbedRequest):
     if not state.model:
         raise HTTPException(status_code=503, detail="Model not loaded")
-    embeddings = [list(state._dense_model.embed([f"passage: {t}"]))[0].tolist() for t in request.texts]
+    embeddings = [list(state._dense_model.embed([f"passage: {text}"]))[0].tolist() for text in request.texts]
     return EmbedResponse(embeddings=embeddings)
 
 
@@ -155,7 +155,7 @@ async def debug_state():
     files_in_dir = []
     if config.DOCS_DIR.exists():
         for root, dirs, files in os.walk(config.DOCS_DIR):
-            dirs[:] = [d for d in dirs if d not in config.IGNORE_DIRS]
+            dirs[:] = [directory for directory in dirs if directory not in config.IGNORE_DIRS]
             for file_name in files:
                 path = config.Path(root) / file_name
                 files_in_dir.append({
@@ -168,7 +168,7 @@ async def debug_state():
         "docs_dir": str(config.DOCS_DIR),
         "docs_dir_exists": config.DOCS_DIR.exists(),
         "allowed_extensions": sorted(config.ALLOWED_EXTENSIONS),
-        "tracked_files_in_memory": {str(k): v[:12] for k, v in state.file_hashes.items()},
+        "tracked_files_in_memory": {str(path): value[:12] for path, value in state.file_hashes.items()},
         "files_on_disk": files_in_dir,
         "collection": config.COLLECTION_NAME,
         "model_dim": state.model.get_embedding_dimension() if state.model else None,

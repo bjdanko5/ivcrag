@@ -6,7 +6,7 @@ import uuid
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from app import state
+from app.state import state
 from app.rag.answers import _rag_answer
 from app.schemas import _ChatCompletionRequest
 

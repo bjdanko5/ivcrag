@@ -1,7 +1,8 @@
-"""Shared runtime state and dependencies used by app modules."""
+"""Shared application configuration and runtime state."""
 import logging
 import os
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Dict, Optional
 
 import redis
@@ -18,16 +19,19 @@ logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
-log = logging.getLogger("embedding_server")
 
-model: Optional[Any] = None
-_sparse_model = None
-_dense_model = None
-qdrant_client: Optional[QdrantClient] = None
-r_client: Optional[redis.Redis] = None
-file_hashes: Dict[Path, str] = {}
+state = SimpleNamespace(
+    log=logging.getLogger("embedding_server"),
+    model=None,
+    _sparse_model=None,
+    _dense_model=None,
+    qdrant_client=None,
+    r_client=None,
+    file_hashes={},
+    models=models,
+    Document=Document,
+    Prefetch=Prefetch,
+    requests=requests,
+)
 
-__all__ = [
-    "log", "model", "_sparse_model", "_dense_model", "qdrant_client",
-    "r_client", "file_hashes", "models", "Document", "Prefetch", "requests",
-]
+__all__ = ["config", "state"]

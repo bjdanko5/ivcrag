@@ -8,8 +8,8 @@ from fastapi import FastAPI
 from qdrant_client import QdrantClient, models
 from qdrant_client.models import SparseVectorParams
 
-from . import config, state
-from .ingestion.scanner import _load_hashes, periodic_scan
+from app.state import config, state
+from app.ingestion.scanner import _load_hashes, periodic_scan
 
 
 @asynccontextmanager

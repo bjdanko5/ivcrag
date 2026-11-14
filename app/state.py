@@ -1,7 +1,6 @@
 """Shared runtime state and dependencies used by app modules."""
 import logging
 import os
-import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -11,9 +10,6 @@ from qdrant_client import QdrantClient, models
 from qdrant_client.models import Document, Prefetch
 
 from . import config
-
-# Preserve legacy imports used by the original ingestion and RAG modules.
-sys.modules.setdefault("config", config)
 
 os.environ["OMP_NUM_THREADS"] = "4"
 os.environ["MKL_NUM_THREADS"] = "4"
@@ -30,9 +26,6 @@ _dense_model = None
 qdrant_client: Optional[QdrantClient] = None
 r_client: Optional[redis.Redis] = None
 file_hashes: Dict[Path, str] = {}
-
-# Legacy modules import `state` directly.
-sys.modules.setdefault("state", sys.modules[__name__])
 
 __all__ = [
     "log", "model", "_sparse_model", "_dense_model", "qdrant_client",

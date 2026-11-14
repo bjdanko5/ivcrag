@@ -6,9 +6,14 @@ import uuid
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 
-import state
-from rag.answers import _rag_answer
-from schemas import _ChatCompletionRequest
+try:
+    from app import state
+    from app.rag.answers import _rag_answer
+    from app.schemas import _ChatCompletionRequest
+except ImportError:  # pragma: no cover
+    import state
+    from rag.answers import _rag_answer
+    from schemas import _ChatCompletionRequest
 
 router = APIRouter()
 
@@ -27,15 +32,16 @@ async def openai_chat_completions(req: _ChatCompletionRequest):
         raise HTTPException(status_code=400, detail="No user message found")
     try:
         result = _rag_answer(question, req.max_tokens)
-    except Exception as e:
-        state.log.error(f"[openai] RAG error: {e}")
+    except Exception as exc:  # pragma: no cover
+        state.log.error(f"[openai] RAG error: {exc}")
         import traceback
         state.log.error(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"RAG error: {e}")
+        raise HTTPException(status_code=500, detail=f"RAG error: {exc}")
 
     answer = result["answer"]
     created = int(time.time())
     completion_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
+
     if req.stream:
         async def event_gen():
             first = {
@@ -52,7 +58,7 @@ async def openai_chat_completions(req: _ChatCompletionRequest):
                     "object": "chat.completion.chunk",
                     "created": created,
                     "model": req.model,
-                    "choices": [{"index": 0, "delta": {"content": answer[i:i+40]}, "finish_reason": None}],
+                    "choices": [{"index": 0, "delta": {"content": answer[i:i + 40]}, "finish_reason": None}],
                 }
                 yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
             last = {
@@ -64,6 +70,7 @@ async def openai_chat_completions(req: _ChatCompletionRequest):
             }
             yield f"data: {json.dumps(last, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
+
         return StreamingResponse(event_gen(), media_type="text/event-stream")
 
     prompt_tokens = len(question) // 4

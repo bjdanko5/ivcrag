@@ -1,349 +1,97 @@
-import json as _json
-import time as _time
-import traceback
-import uuid as _uuid
-import re
+"""Application lifecycle for startup and shutdown."""
+import asyncio
+import logging
 
-from fastapi import BackgroundTasks, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi import FastAPI
 
-import config
-import state
-from ingestion import scan_docs_dir
-from rag import _rag_answer
-from schemas import EmbedRequest, EmbedResponse, _ChatCompletionRequest, _ChatMessage
+try:
+    import app.config as config
+    import app.state as state
+except ImportError:  # pragma: no cover
+    import config
+    import state
 
-
-HTML_INDEX = r'''<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>RAG · Телефонный справочник</title>
-<style>
-  * { box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-         margin: 0; background: #f4f5f7; color: #1a1a1a; }
-  header { background: #1f2937; color: #fff; padding: 12px 20px;
-           display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-  header h1 { margin: 0; font-size: 18px; font-weight: 600; }
-  header .status { font-size: 12px; opacity: 0.85; }
-  header .status .dot { display: inline-block; width: 8px; height: 8px;
-                         border-radius: 50%; background: #ef4444; margin-right: 4px; }
-  header .status.ok .dot { background: #22c55e; }
-  main { max-width: 1200px; margin: 0 auto; padding: 20px; }
-  .chat { background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08);
-          display: flex; flex-direction: column; height: calc(100vh - 160px); }
-  .messages { flex: 1; overflow-y: auto; padding: 16px; }
-  .msg { margin-bottom: 12px; padding: 10px 14px; border-radius: 10px;
-         max-width: 90%; white-space: pre-wrap; word-wrap: break-word; }
-  .msg.user { background: #dbeafe; margin-left: auto; }
-  .msg.assistant { background: #f3f4f6; }
-  .msg.assistant table { border-collapse: collapse; margin-top: 8px; font-size: 13px; }
-  .msg.assistant th, .msg.assistant td { border: 1px solid #d1d5db; padding: 4px 8px; text-align: left; }
-  .msg.assistant th { background: #e5e7eb; }
-  .msg.assistant em { color: #6b7280; }
-  .input-row { display: flex; gap: 8px; padding: 12px; border-top: 1px solid #e5e7eb; }
-  .input-row textarea { flex: 1; resize: none; border: 1px solid #d1d5db;
-                       border-radius: 8px; padding: 8px 12px; font-size: 14px;
-                       font-family: inherit; min-height: 44px; max-height: 120px; }
-  .input-row button { background: #2563eb; color: #fff; border: 0; border-radius: 8px;
-                      padding: 0 20px; font-size: 14px; cursor: pointer; font-weight: 500; }
-  .input-row button:disabled { background: #93c5fd; cursor: not-allowed; }
-  .tools { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
-  .tools button { background: #fff; border: 1px solid #d1d5db; border-radius: 8px;
-                  padding: 6px 12px; font-size: 13px; cursor: pointer; }
-  .tools button:hover { background: #f9fafb; }
-  .hint { font-size: 12px; color: #6b7280; margin-top: 6px; }
-  .sources { font-size: 11px; color: #6b7280; margin-top: 6px; }
-</style>
-</head>
-<body>
-<header>
-  <h1>📞 RAG · Телефонный справочник</h1>
-  <div class="status" id="status"><span class="dot"></span>проверка...</div>
-</header>
-<main>
-  <div class="chat">
-    <div class="messages" id="messages">
-      <div class="msg assistant">
-        👋 <b>Привет! Я — справочная система.</b><br><br>
-        <b>Что можно спросить:</b><br>
-        • <b>Телефон по фамилии:</b> «тел Жданко», «телефон Мельникова»<br>
-        • <b>Телефон по отделу:</b> «тел ИТ», «тел АУО», «тел МТО»<br>
-        • <b>Список сотрудников:</b> «Кто работает в ИТ отделе», «Сколько людей в бухгалтерии»<br>
-        • <b>Отдел сотрудника:</b> «в каком отделе Дуванский»<br>
-        • <b>Список отделов:</b> «Какие отделы есть?»<br>
-        • <b>Токены/ключи:</b> «Какой токен HF?»<br><br>
-        <i>Начните с вопроса «Какие отделы есть?», чтобы увидеть все отделы.</i>
-      </div>
-    </div>
-    <div class="input-row">
-      <textarea id="input" placeholder="Например: тел Жданко, тел ИТ, какие отделы есть?" rows="1"></textarea>
-      <button id="send">Отправить</button>
-    </div>
-  </div>
-  <div class="tools">
-    <button onclick="doHealth()">🏥 Здоровье</button>
-    <button onclick="doScan()">🔄 Сканировать</button>
-    <button onclick="doReindex()">📥 Переиндексировать XLSX</button>
-    <span class="hint" id="hint"></span>
-  </div>
-</main>
-<script>
-(function () {
-  var messagesEl = document.getElementById('messages');
-  var inputEl = document.getElementById('input');
-  var sendEl = document.getElementById('send');
-  var statusEl = document.getElementById('status');
-  var hintEl = document.getElementById('hint');
-
-  function esc(s) {
-    return String(s == null ? '' : s)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  }
-
-  function renderMarkdown(text) {
-    var lines = String(text == null ? '' : text).split(String.fromCharCode(10));
-    var out = [];
-    var inTable = false;
-    var inList = false;
-    var i = 0;
-    while (i < lines.length) {
-      var line = lines[i];
-      var trimmed = line.trim();
-
-      if (trimmed.charAt(0) === '|' && trimmed.charAt(trimmed.length - 1) === '|') {
-        if (inList) { out.push('</ul>'); inList = false; }
-        var next = (i + 1 < lines.length) ? lines[i + 1] : '';
-        if (!inTable && next.indexOf('---') !== -1) {
-          inTable = true;
-          out.push('<table><thead><tr>');
-          var cells0 = trimmed.split('|').slice(1, -1);
-          for (var k = 0; k < cells0.length; k++) {
-            out.push('<th>' + esc(cells0[k].trim()) + '</th>');
-          }
-          out.push('</tr></thead><tbody>');
-          i += 2;
-          continue;
-        } else if (inTable) {
-          var cells = trimmed.split('|').slice(1, -1);
-          out.push('<tr>');
-          for (var j = 0; j < cells.length; j++) {
-            out.push('<td>' + esc(cells[j].trim()) + '</td>');
-          }
-          out.push('</tr>');
-          i += 1;
-          continue;
-        }
-      } else if (inTable) {
-        out.push('</tbody></table>');
-        inTable = false;
-      }
-
-      var isListItem = (trimmed.indexOf('- ') === 0) || (trimmed.indexOf('• ') === 0) || (trimmed.indexOf('* ') === 0);
-      if (isListItem) {
-        if (!inList) {
-          out.push('<ul>');
-          inList = true;
-        }
-        var itemText = trimmed.replace(/^[-•*]\s+/, '');
-        out.push('<li>' + esc(itemText) + '</li>');
-        i += 1;
-        continue;
-      } else if (inList) {
-        out.push('</ul>');
-        inList = false;
-      }
-
-      if (trimmed === '') {
-        out.push('<br>');
-      } else if (trimmed.charAt(0) === '_' && trimmed.charAt(trimmed.length - 1) === '_') {
-        out.push('<em>' + esc(trimmed.slice(1, -1)) + '</em>');
-      } else {
-        out.push(esc(line));
-      }
-      i += 1;
-    }
-    if (inTable) out.push('</tbody></table>');
-    if (inList) out.push('</ul>');
-    return out.join('');
-  }
-
-  function addMessage(role, text, sources) {
-    var div = document.createElement('div');
-    div.className = 'msg ' + role;
-    if (role === 'assistant') {
-      div.innerHTML = renderMarkdown(text);
-      if (sources && sources.length) {
-        var sEl = document.createElement('div');
-        sEl.className = 'sources';
-        sEl.textContent = 'Источники: ' + sources.join(', ');
-        div.appendChild(sEl);
-      }
-    } else {
-      div.textContent = text;
-    }
-    messagesEl.appendChild(div);
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-  }
-
-  function send() {
-    var q = inputEl.value.trim();
-    if (!q) return;
-    addMessage('user', q);
-    inputEl.value = '';
-    sendEl.disabled = true;
-    hintEl.textContent = 'думаю...';
-    var t0 = (window.performance && performance.now) ? performance.now() : Date.now();
-    fetch('/v1/chat/completions', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({model: 'rag', messages: [{role: 'user', content: q}]})
-    }).then(function (r) { return r.json(); }).then(function (d) {
-      var ans = (d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || '(пусто)';
-      addMessage('assistant', ans, d.x_rag_sources || []);
-      var t1 = (window.performance && performance.now) ? performance.now() : Date.now();
-      hintEl.textContent = ((t1 - t0) / 1000).toFixed(2) + ' с';
-    }).catch(function (e) {
-      addMessage('assistant', 'Ошибка: ' + e.message);
-      hintEl.textContent = '';
-    }).then(function () {
-      sendEl.disabled = false;
-    });
-  }
-
-  function doHealth() {
-    hintEl.textContent = 'health...';
-    fetch('/health').then(function (r) { return r.json(); }).then(function (d) {
-      addMessage('assistant', 'health:\n' + JSON.stringify(d, null, 2));
-      hintEl.textContent = '';
-    }).catch(function () { hintEl.textContent = 'ошибка'; });
-  }
-
-  function doScan() {
-    hintEl.textContent = 'scan...';
-    fetch('/scan', {method: 'POST'}).then(function (r) { return r.json(); }).then(function (d) {
-      addMessage('assistant', 'scan:\n' + JSON.stringify(d, null, 2));
-      hintEl.textContent = '';
-    }).catch(function () { hintEl.textContent = 'ошибка'; });
-  }
-
-  function doReindex() {
-    var name = prompt('Имя файла (source):', 'Телефонный справочник.xlsx');
-    if (!name) return;
-    hintEl.textContent = 'reindex...';
-    fetch('/reindex/' + encodeURIComponent(name), {method: 'POST'})
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        addMessage('assistant', 'reindex:\n' + JSON.stringify(d, null, 2));
-        hintEl.textContent = '';
-      }).catch(function () { hintEl.textContent = 'ошибка'; });
-  }
-
-  function checkStatus() {
-    fetch('/health', {cache: 'no-store'}).then(function (r) { return r.json(); }).then(function (d) {
-      if (d.status === 'ok' && d.model_loaded) {
-        statusEl.className = 'status ok';
-        statusEl.innerHTML = '<span class="dot"></span>онлайн · модель загружена';
-      } else {
-        statusEl.className = 'status';
-        statusEl.innerHTML = '<span class="dot"></span>деградация';
-      }
-    }).catch(function (e) {
-      statusEl.className = 'status';
-      statusEl.innerHTML = '<span class="dot"></span>offline';
-    });
-  }
-
-  sendEl.addEventListener('click', send);
-  inputEl.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
-  });
-  window.doHealth = doHealth;
-  window.doScan = doScan;
-  window.doReindex = doReindex;
-
-  checkStatus();
-  setInterval(checkStatus, 10000);
-})();
-</script>
-</body>
-</html>'''
+log = logging.getLogger("embedding_server")
 
 
-def _last_user_question(messages):
-    for m in reversed(messages):
-        if m.role == "user" and m.text.strip():
-            return m.text.strip()
-    return ""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global model, qdrant_client, r_client
+    import asyncio
+
+    log.info("=" * 60)
+    log.info("СТАРТ СЕРВЕРА")
+    log.info("=" * 60)
+
+    log.info("[lifespan] Подключение к Redis...")
+    state.r_client = redis.Redis(host=config.REDIS_HOST, port=config.REDIS_PORT, db=config.REDIS_DB, decode_responses=True)
+    try:
+        state.r_client.ping()
+        log.info("[lifespan] Redis OK")
+    except Exception as exc:
+        log.error(f"[lifespan] Redis FAIL: {exc}")
+
+    log.info(f"[lifespan] Загрузка Dense-модели (fastembed): {config.MODEL_NAME}...")
+    from fastembed import TextEmbedding
+    state._dense_model = TextEmbedding(model_name=config.MODEL_NAME)
+
+    from fastembed import SparseTextEmbedding
+    state._sparse_model = SparseTextEmbedding(model_name="Qdrant/bm25")
+    log.info("[lifespan] Sparse-модель BM25 загружена")
+    log.info(f"[lifespan] Dense-модель загружена (размерность 384)")
+
+    log.info("[lifespan] Подключение к Qdrant...")
+    state.qdrant_client = QdrantClient(url=config.QDRANT_URL)
+    try:
+        collections = state.qdrant_client.get_collections().collections
+        log.info(f"[lifespan] Qdrant OK, коллекций: {[c.name for c in collections]}")
+    except Exception as exc:
+        log.error(f"[lifespan] Qdrant FAIL: {exc}")
+
+    if not state.qdrant_client.collection_exists(config.COLLECTION_NAME):
+        log.info(f"[lifespan] Создание коллекции {config.COLLECTION_NAME}...")
+        state.qdrant_client.create_collection(
+            collection_name=config.COLLECTION_NAME,
+            vectors_config={"dense": models.VectorParams(size=384, distance=models.Distance.COSINE)},
+            sparse_vectors_config={"sparse": SparseVectorParams(modifier=models.Modifier.IDF)},
+        )
+        log.info(f"[lifespan] Коллекция {config.COLLECTION_NAME} создана")
+    else:
+        info = state.qdrant_client.get_collection(config.COLLECTION_NAME)
+        log.info(f"[lifespan] Коллекция {config.COLLECTION_NAME} существует, точек: {info.points_count}")
+
+    log.info("[lifespan] Запуск фонового сканирования...")
+    if config.SCAN_REINDEX_ON_START:
+        log.info("[lifespan] reindex_on_start=true — file_hashes сбрасываются (переиндексация всех)")
+        state.file_hashes.clear()
+    else:
+        from app.ingestion.scanner import _load_hashes
+        _load_hashes()
+    scan_task = asyncio.create_task(periodic_scan())
+    log.info(f"[lifespan] Задача создана: {scan_task}")
+
+    log.info("[lifespan] Вся инфраструктура готова")
+
+    try:
+        requests.post(
+            config.LLAMA_SERVER_URL,
+            json={"model": config.OLLAMA_MODEL, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1},
+            timeout=60,
+        )
+        log.info("[lifespan] Микро-LLM прогрета")
+    except Exception as exc:
+        log.warning(f"[lifespan] Прогрев не удался: {exc}")
+
+    yield
+
+    log.info("[lifespan] Остановка сервера...")
+    scan_task.cancel()
+    try:
+        await scan_task
+    except asyncio.CancelledError:
+        log.info("[lifespan] Задача сканирования отменена")
+    state.model = None
+    log.info("[lifespan] Сервер остановлен")
 
 
-def _openai_completion_response(req, answer, question):
-    created = int(_time.time())
-    completion_id = f"chatcmpl-{_uuid.uuid4().hex[:24]}"
-    if req.stream:
-        async def event_gen():
-            first = {
-                "id": completion_id,
-                "object": "chat.completion.chunk",
-                "created": created,
-                "model": req.model,
-                "choices": [{
-                    "index": 0,
-                    "delta": {"role": "assistant", "content": ""},
-                    "finish_reason": None,
-                }],
-            }
-            yield f"data: {_json.dumps(first, ensure_ascii=False)}\n\n"
-            for i in range(0, len(answer), 40):
-                chunk = {
-                    "id": completion_id,
-                    "object": "chat.completion.chunk",
-                    "created": created,
-                    "model": req.model,
-                    "choices": [{
-                        "index": 0,
-                        "delta": {"content": answer[i:i+40]},
-                        "finish_reason": None,
-                    }],
-                }
-                yield f"data: {_json.dumps(chunk, ensure_ascii=False)}\n\n"
-            last = {
-                "id": completion_id,
-                "object": "chat.completion.chunk",
-                "created": created,
-                "model": req.model,
-                "choices": [{
-                    "index": 0,
-                    "delta": {},
-                    "finish_reason": "stop",
-                }],
-            }
-            yield f"data: {_json.dumps(last, ensure_ascii=False)}\n\n"
-            yield "data: [DONE]\n\n"
-        return StreamingResponse(event_gen(), media_type="text/event-stream")
-
-    prompt_tokens = len(question) // 4
-    completion_tokens = len(answer) // 4
-    return JSONResponse({
-        "id": completion_id,
-        "object": "chat.completion",
-        "created": created,
-        "model": req.model,
-        "choices": [{
-            "index": 0,
-            "message": {"role": "assistant", "content": answer},
-            "finish_reason": "stop",
-        }],
-        "usage": {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": prompt_tokens + completion_tokens,
-        },
-        "x_rag_sources": state.rag_sources,
-        "x_rag_hits": state.rag_hits,
-    })
-
-
-__all__ = ["HTML_INDEX", "_last_user_question", "_openai_completion_response"]
+__all__ = ["lifespan"]

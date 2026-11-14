@@ -7,9 +7,11 @@ router = APIRouter()
 
 @router.get("/", response_class=HTMLResponse)
 async def ui_index():
-    # HTML is kept in the legacy UI module during the file-only move.
-    from main import HTML_INDEX
-    return HTML_INDEX
+    try:
+        from app.main import HTML_INDEX
+        return HTML_INDEX
+    except ImportError:  # pragma: no cover
+        return """<html><body><h1>ivcrag</h1></body></html>"""
 
 
 __all__ = ["router"]

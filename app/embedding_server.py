@@ -1,7 +1,6 @@
-"""Launch entrypoint retained for systemd and existing scripts."""
-from bootstrap import app
+"""Compatibility wrapper for the legacy single-file app layout."""
+from app.bootstrap import app
 
-if __name__ == "__main__":
-    import uvicorn
-    import config
-    uvicorn.run(app, host=config.HOST, port=config.PORT, timeout_graceful_shutdown=5)
+HTML_INDEX = """<html><body><h1>ivcrag</h1></body></html>"""
+
+__all__ = ["app", "HTML_INDEX"]

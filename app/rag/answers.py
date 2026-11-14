@@ -1,5 +1,8 @@
-"""RAG direct-answer formatters and answer pipeline entry points."""
-from . import _legacy
+"""Direct-answer formatting and final RAG answer builder."""
+try:
+    from app import rag as _legacy
+except ImportError:  # pragma: no cover
+    import rag as _legacy
 
 _format_department_answer = _legacy._format_department_answer
 _format_phone_answer_from_hit = _legacy._format_phone_answer_from_hit

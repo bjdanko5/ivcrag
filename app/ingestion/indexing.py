@@ -1,5 +1,8 @@
-"""Chunking, file indexing, and Qdrant write entry points."""
-from . import _legacy
+"""Chunking and indexing helpers."""
+try:
+    from app import ingestion as _legacy
+except ImportError:  # pragma: no cover
+    import ingestion as _legacy
 
 chunk_text = _legacy.chunk_text
 get_file_hash = _legacy.get_file_hash

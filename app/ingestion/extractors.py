@@ -1,5 +1,8 @@
-"""Document extraction entry points."""
-from . import _legacy
+"""Ingestion extraction entry points."""
+try:
+    from app import ingestion as _legacy
+except ImportError:  # pragma: no cover
+    import ingestion as _legacy
 
 _extract_docx = _legacy._extract_docx
 _extract_pdf = _legacy._extract_pdf

@@ -6,10 +6,9 @@ import requests
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from qdrant_client import models
 
-import config
-import state
-from ingestion.scanner import scan_docs_dir
-from schemas import EmbedRequest, EmbedResponse
+from app import config, state
+from app.ingestion.scanner import scan_docs_dir
+from app.schemas import EmbedRequest, EmbedResponse
 
 router = APIRouter()
 
@@ -25,17 +24,19 @@ def background_rag_pipeline(task_id: str):
         state.r_client.set(f"task:status:{task_id}", "searching", ex=config.REDIS_TTL)
         state.log.info(f"[{task_id}] Поиск контекста для: {question}")
         query_vector = list(state._dense_model.query_embed(f"query: {question}"))[0].tolist()
+
         query_filter = None
         file_match = __import__("re").search(
             r'[\w.-]+\.(?:md|txt|pdf|docx|xlsx|xls|py|sh|json|ya?ml)',
-            question, __import__("re").IGNORECASE,
+            question,
+            __import__("re").IGNORECASE,
         )
         if file_match:
             detected_source = file_match.group(0)
             state.log.info(f"[{task_id}] Фильтр по источнику: {detected_source}")
-            query_filter = models.Filter(must=[models.FieldCondition(
-                key="source", match=models.MatchValue(value=detected_source)
-            )])
+            query_filter = models.Filter(
+                must=[models.FieldCondition(key="source", match=models.MatchValue(value=detected_source))]
+            )
 
         hits = state.qdrant_client.query_points(
             collection_name=config.COLLECTION_NAME,
@@ -46,11 +47,12 @@ def background_rag_pipeline(task_id: str):
         ).points
         if not hits:
             state.r_client.set(f"task:status:{task_id}", "ok", ex=config.REDIS_TTL)
-            state.r_client.set(f"task:answer:{task_id}", "В базе данных не найдено релевантных фрагментов.", ex=config.REDIS_TTL)
+            state.r_client.set(
+                f"task:answer:{task_id}",
+                "В базе данных не найдено релевантных фрагментов.",
+                ex=config.REDIS_TTL,
+            )
             return
-
-        for h in hits:
-            state.log.info(f"[{task_id}]   hit: {h.payload.get('source', '?')} chunk {h.payload.get('chunk_index', '?')} score={h.score:.3f}")
 
         context_parts, total = [], 0
         for hit in hits:
@@ -62,14 +64,16 @@ def background_rag_pipeline(task_id: str):
                 break
             context_parts.append(block)
             total += len(block)
+
         context = "\n---\n".join(context_parts)
         state.log.info(f"[{task_id}] Контекст: {len(context_parts)} чанков, {total} символов")
 
-        sources = list(set(h.payload.get("source", "?") for h in hits))
+        sources = list({h.payload.get("source", "?") for h in hits})
         state.r_client.set(f"task:sources:{task_id}", ", ".join(sources), ex=config.REDIS_TTL)
         state.r_client.set(f"task:status:{task_id}", "generating", ex=config.REDIS_TTL)
         state.log.info(f"[{task_id}] Отправка в llama-server...")
         user_prompt = config.USER_PROMPT_TEMPLATE.format(context=context, question=question)
+
         resp = requests.post(
             config.LLAMA_SERVER_URL,
             json={
@@ -91,8 +95,8 @@ def background_rag_pipeline(task_id: str):
         state.r_client.set(f"task:answer:{task_id}", answer, ex=config.REDIS_TTL)
         state.r_client.set(f"task:status:{task_id}", "ok", ex=config.REDIS_TTL)
         state.log.info(f"[{task_id}] Задача выполнена")
-    except Exception as e:
-        state.log.error(f"Ошибка пайплайна {task_id}: {e}")
+    except Exception as exc:  # pragma: no cover
+        state.log.error(f"Ошибка пайплайна {task_id}: {exc}")
         state.log.error(traceback.format_exc())
         state.r_client.set(f"task:status:{task_id}", "error", ex=config.REDIS_TTL)
 
@@ -102,7 +106,7 @@ async def embed(request: EmbedRequest):
     if not state.model:
         raise HTTPException(status_code=503, detail="Model not loaded")
     embeddings = [list(state._dense_model.embed([f"passage: {t}"]))[0].tolist() for t in request.texts]
-    return EmbedResponse(embeddings=embeddings.tolist())
+    return EmbedResponse(embeddings=embeddings)
 
 
 @router.post("/send/{task_id}")
@@ -152,13 +156,13 @@ async def debug_state():
     if config.DOCS_DIR.exists():
         for root, dirs, files in os.walk(config.DOCS_DIR):
             dirs[:] = [d for d in dirs if d not in config.IGNORE_DIRS]
-            for f in files:
-                p = config.Path(root) / f
+            for file_name in files:
+                path = config.Path(root) / file_name
                 files_in_dir.append({
-                    "path": str(p),
-                    "ext": p.suffix.lower(),
-                    "allowed": p.suffix.lower() in config.ALLOWED_EXTENSIONS,
-                    "size": p.stat().st_size if p.exists() else -1,
+                    "path": str(path),
+                    "ext": path.suffix.lower(),
+                    "allowed": path.suffix.lower() in config.ALLOWED_EXTENSIONS,
+                    "size": path.stat().st_size if path.exists() else -1,
                 })
     return {
         "docs_dir": str(config.DOCS_DIR),

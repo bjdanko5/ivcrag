@@ -6,14 +6,9 @@ import uuid
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 
-try:
-    from app import state
-    from app.rag.answers import _rag_answer
-    from app.schemas import _ChatCompletionRequest
-except ImportError:  # pragma: no cover
-    import state
-    from rag.answers import _rag_answer
-    from schemas import _ChatCompletionRequest
+from app import state
+from app.rag.answers import _rag_answer
+from app.schemas import _ChatCompletionRequest
 
 router = APIRouter()
 

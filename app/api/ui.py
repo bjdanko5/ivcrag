@@ -2,12 +2,13 @@
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
 
+from app.ui import HTML_INDEX
+
 router = APIRouter()
 
 
 @router.get("/", response_class=HTMLResponse)
 async def ui_index():
-    from app.main import HTML_INDEX
     return HTML_INDEX
 
 

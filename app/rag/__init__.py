@@ -1,19 +1,18 @@
-"""RAG package exposing the legacy answer pipeline through focused modules."""
-import importlib.util
-import sys
-from pathlib import Path
+"""RAG package exposing refactored modules."""
+from app.rag.answers import (
+    _build_md_table,
+    _format_department_answer,
+    _format_phone_answer_from_hit,
+    _rag_answer,
+)
+from app.rag.retrieval import _collect_all_entity_rows, _filter_hits_by_entity, _normalize_query_for_search
 
-from app.state import config, state
-
-_legacy_path = Path(__file__).resolve().parents[1] / "rag.py"
-_spec = importlib.util.spec_from_file_location("_ivcrag_rag_legacy", _legacy_path)
-if _spec is None or _spec.loader is None:
-    raise ImportError(f"Cannot load RAG implementation from {_legacy_path}")
-_legacy = importlib.util.module_from_spec(_spec)
-sys.modules[_spec.name] = _legacy
-_spec.loader.exec_module(_legacy)
-
-for _symbol in _legacy.__all__:
-    globals()[_symbol] = getattr(_legacy, _symbol)
-
-__all__ = list(_legacy.__all__)
+__all__ = [
+    "_normalize_query_for_search",
+    "_filter_hits_by_entity",
+    "_collect_all_entity_rows",
+    "_format_department_answer",
+    "_format_phone_answer_from_hit",
+    "_build_md_table",
+    "_rag_answer",
+]

@@ -43,7 +43,7 @@ paths:
 server:
   host: 0.0.0.0
   top_k: 20
-  max_context_chars: 3000
+  max_context_chars: 800
   max_answer_tokens: 512
   log_level: warning
 

@@ -44,6 +44,7 @@ server:
   host: 0.0.0.0
   top_k: 20
   max_context_chars: 800
+  analytical_context_chars: 1500
   max_answer_tokens: 512
   log_level: warning
 

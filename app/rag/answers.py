@@ -247,6 +247,33 @@ def _build_md_table(headers: List[str], values: List[str]) -> str:
     return f"{header_line}\n{separator}\n{value_line}"
 
 
+def _build_context_adaptive(ranked, question, relevance_fn):
+    """Собирает контекст при базовом лимите; если релевантные блоки не влезли —
+    пересобирает при расширенном лимите. Без предметных словарей."""
+    base = config.MAX_CONTEXT_CHARS
+    extended = max(base, getattr(config, "ANALYTICAL_CONTEXT_CHARS", base))
+
+    def collect(limit):
+        parts, total, dropped_rel = [], 0, 0
+        for hit in ranked:
+            text = hit.payload.get("text", "") or ""
+            block = f"[{hit.payload.get('source', '?')} | chunk {hit.payload.get('chunk_index', '?')}]\n{text}\n"
+            if total + len(block) > limit:
+                if relevance_fn(hit, question) > 0:
+                    dropped_rel += 1
+                continue
+            parts.append(block)
+            total += len(block)
+        return parts, dropped_rel
+
+    parts, dropped = collect(base)
+    if dropped > 0 and extended > base:
+        parts2, _ = collect(extended)
+        if len("\n---\n".join(parts2)) > len("\n---\n".join(parts)):
+            parts = parts2
+    return "\n---\n".join(parts) if parts else "(контекст не найден)"
+
+
 def _rag_answer(question: str, max_tokens: int = None) -> dict:
     search_question = _normalize_query_for_search(question)
     query_vector = list(state._dense_model.query_embed(f"query: {search_question}"))[0].tolist()
@@ -277,18 +304,18 @@ def _rag_answer(question: str, max_tokens: int = None) -> dict:
 
     hits = _filter_hits_by_entity(hits, question)
 
-    context_parts, total = [], 0
-    for hit in hits:
-        src_name = hit.payload.get("source", "?")
-        idx = hit.payload.get("chunk_index", "?")
-        text = hit.payload.get("text", "")
-        block = f"[{src_name} | chunk {idx}]\n{text}\n"
-        if total + len(block) > config.MAX_CONTEXT_CHARS:
-            break
-        context_parts.append(block)
-        total += len(block)
+    _STOP = {"тел", "телефон", "отдел", "кто", "какие", "есть", "все", "список", "номер", "как", "чем", "что", "где", "когда"}
 
-    context = "\n---\n".join(context_parts) if context_parts else "(контекст не найден)"
+    def _ctx_relevance(hit, question):
+        text = (hit.payload.get("text") or "").lower()
+        words = [w for w in re.findall(r"\w{3,}", question.lower()) if w not in _STOP]
+        if not words:
+            return 0.0
+        stems = [w[:5] for w in words]
+        return sum(1 for st in stems if st in text) / len(stems)
+
+    ranked = sorted(hits, key=lambda h: _ctx_relevance(h, question), reverse=True)
+    context = _build_context_adaptive(ranked, question, _ctx_relevance)
     sources = sorted({hit.payload.get("source", "?") for hit in hits})
 
     has_name = bool(re.search(r"[А-ЯЁA-Z][а-яёa-z]{3,}", question))

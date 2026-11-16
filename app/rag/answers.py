@@ -3,6 +3,7 @@ import re
 from typing import List
 
 from app.state import config, state
+from app import tracing
 from app.rag.retrieval import _collect_all_entity_rows, _filter_hits_by_entity, _normalize_query_for_search
 
 
@@ -276,6 +277,10 @@ def _build_context_adaptive(ranked, question, relevance_fn):
 
 def _rag_answer(question: str, max_tokens: int = None) -> dict:
     search_question = _normalize_query_for_search(question)
+    tracing.stage("normalize", {
+        "raw": question,
+        "normalized": search_question,
+    })
     query_vector = list(state._dense_model.query_embed(f"query: {search_question}"))[0].tolist()
 
     query_filter = None
@@ -303,6 +308,20 @@ def _rag_answer(question: str, max_tokens: int = None) -> dict:
     ).points
 
     hits = _filter_hits_by_entity(hits, question)
+    tracing.stage("retrieval", {
+        "n_hits": len(hits),
+        "hits": [
+            {
+                "id": str(getattr(h, "id", "")),
+                "source": (h.payload or {}).get("source"),
+                "chunk_index": (h.payload or {}).get("chunk_index"),
+                "text": (h.payload or {}).get("text"),
+                "score": getattr(h, "score", None),
+                "rank": i,
+            }
+            for i, h in enumerate(hits)
+        ],
+    })
 
     _STOP = {"тел", "телефон", "отдел", "кто", "какие", "есть", "все", "список", "номер", "как", "чем", "что", "где", "когда"}
 
@@ -316,6 +335,11 @@ def _rag_answer(question: str, max_tokens: int = None) -> dict:
 
     ranked = sorted(hits, key=lambda h: _ctx_relevance(h, question), reverse=True)
     context = _build_context_adaptive(ranked, question, _ctx_relevance)
+    tracing.stage("context", {
+        "chars": len(context),
+        "sources": sorted({hit.payload.get("source", "?") for hit in hits}),
+        "text": context,
+    })
     sources = sorted({hit.payload.get("source", "?") for hit in hits})
 
     has_name = bool(re.search(r"[А-ЯЁA-Z][а-яёa-z]{3,}", question))
@@ -523,6 +547,14 @@ def _rag_answer(question: str, max_tokens: int = None) -> dict:
         r.raise_for_status()
         return r
 
+    tracing.stage("llm_request", {
+        "endpoint": config.LLM_URL,
+        "model": config.LLM_MODEL,
+        "fallback_enabled": bool(getattr(config, "LLM_FALLBACK_TO_LOCAL", False)),
+        "max_tokens": max_tokens or config.MAX_ANSWER_TOKENS,
+        "prompt_chars": len(user_prompt),
+        "prompt": user_prompt,
+    })
     try:
         response = _post_llm(config.LLM_URL, config.LLM_MODEL)
     except Exception as e:
@@ -533,6 +565,12 @@ def _rag_answer(question: str, max_tokens: int = None) -> dict:
             raise
     data = response.json()
     answer = data["choices"][0]["message"].get("content", "").strip() or "(пустой ответ)"
+    tracing.stage("llm_response", {
+        "answer": answer,
+        "answer_chars": len(answer),
+        "usage": data.get("usage"),
+        "finish_reason": (data.get("choices") or [{}])[0].get("finish_reason"),
+    })
     return {"answer": answer, "sources": sources, "hits": len(hits)}
 
 

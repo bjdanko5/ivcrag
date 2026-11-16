@@ -5,7 +5,17 @@ from typing import List
 from app.state import config, state
 
 
+_ALPHA_DIGIT_BOUNDARY = re.compile(r"(?<=[^\W\d_])(?=\d)|(?<=\d)(?=[^\W\d_])", re.UNICODE)
+
+
+def _split_alpha_digit(text: str) -> str:
+    """УЗ1 -> УЗ 1, К1 -> К 1, ИСПДн2 -> ИСПДн 2.
+    Общее правило: вставляет пробел на границе буква/цифра. Без словаря терминов."""
+    return _ALPHA_DIGIT_BOUNDARY.sub(" ", text or "").strip()
+
+
 def _normalize_query_for_search(question: str) -> str:
+    question = _split_alpha_digit(question)
     words = question.split()
     result = []
     for word in words:

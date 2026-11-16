@@ -31,7 +31,7 @@ server:
   top_k: 20
   max_context_chars: 3000
   max_answer_tokens: 512
-  log_level: info
+  log_level: warning
 
 docker:
   llama_image: ghcr.io/ggml-org/llama.cpp:server

@@ -38,3 +38,7 @@ data/*
 
 # Docker (если будете делать compose)
 # docker-compose.override.yml
+node-*.tar.xz
+.codegraph/
+AGENTS.md
+PLAN.md

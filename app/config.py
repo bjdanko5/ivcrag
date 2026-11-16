@@ -26,9 +26,34 @@ PORT = int(_c("ports", "rag_server", default=8091))
 QDRANT_URL = f"http://{_c('qdrant', 'host', default='localhost')}:{_c('ports', 'qdrant_http', default=6333)}"
 COLLECTION_NAME = _c("qdrant", "collection", default="allm_docs")
 
-LLAMA_SERVER_URL = f"http://localhost:{_c('ports', 'llama_server', default=8082)}/v1/chat/completions"
-OLLAMA_MODEL = "qwen2.5-0.5b-instruct"
-LLM_TIMEOUT = 180
+# --- LLM: локальная (llama.cpp) или внешняя (OpenAI-совместимая) ---
+LLM_MODE = _c("llm", "mode", default="local")
+LLM_TIMEOUT = int(_c("llm", "timeout", default=180))
+LLM_API_KEY = _c("llm", "api_key", default="") or ""
+LLM_FALLBACK_TO_LOCAL = bool(_c("llm", "fallback_to_local", default=True))
+
+LLM_LOCAL_URL = _c(
+    "llm", "local", "url",
+    default=f"http://localhost:{_c('ports', 'llama_server', default=8082)}/v1/chat/completions",
+)
+LLM_LOCAL_MODEL = _c(
+    "llm", "local", "model",
+    default=_c("models", "llm_gguf", default="qwen2.5-1.5b-instruct-q4_k_m.gguf"),
+)
+
+LLM_REMOTE_URL = _c("llm", "remote", "url", default="")
+LLM_REMOTE_MODEL = _c("llm", "remote", "model", default="")
+
+if LLM_MODE == "remote" and LLM_REMOTE_URL:
+    LLM_URL = LLM_REMOTE_URL
+    LLM_MODEL = LLM_REMOTE_MODEL
+else:
+    LLM_URL = LLM_LOCAL_URL
+    LLM_MODEL = LLM_LOCAL_MODEL
+
+# Обратная совместимость (используется в health и прогреве)
+LLAMA_SERVER_URL = LLM_LOCAL_URL
+OLLAMA_MODEL = LLM_MODEL
 
 REDIS_HOST = "192.168.10.130"
 REDIS_PORT = 6379
@@ -191,4 +216,13 @@ __all__ = [
     "_expand_department",
     "_department_with_alias",
     "_normalize_text",
+    "LLM_URL",
+    "LLM_MODEL",
+    "LLM_MODE",
+    "LLM_LOCAL_URL",
+    "LLM_LOCAL_MODEL",
+    "LLM_REMOTE_URL",
+    "LLM_REMOTE_MODEL",
+    "LLM_API_KEY",
+    "LLM_FALLBACK_TO_LOCAL",
 ]

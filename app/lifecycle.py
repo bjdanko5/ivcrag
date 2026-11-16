@@ -78,15 +78,16 @@ async def lifespan(app: FastAPI):
 
     try:
         requests.post(
-            config.LLAMA_SERVER_URL,
+            config.LLM_URL,
             json={
-                "model": config.OLLAMA_MODEL,
+                "model": config.LLM_MODEL,
                 "messages": [{"role": "user", "content": "hi"}],
                 "max_tokens": 1,
+                "chat_template_kwargs": {"enable_thinking": False},
             },
             timeout=60,
         )
-        state.log.info("[lifespan] Микро-LLM прогрета")
+        state.log.info(f"[lifespan] LLM прогрета ({config.LLM_MODE}: {config.LLM_MODEL})")
     except Exception as exc:
         state.log.warning(f"[lifespan] Прогрев не удался: {exc}")
 

@@ -14,6 +14,20 @@ models:
   embedding: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
   embed_backend: fastembed
 
+
+llm:
+  mode: remote                        # local | remote  ← переключатель
+  timeout: 180
+  api_key: ""                        # пусто = без Authorization
+  fallback_to_local: true            # если remote упал — вернуться на local
+
+  local:
+    url: http://localhost:8082/v1/chat/completions
+    model: qwen2.5-1.5b-instruct-q4_k_m.gguf
+
+  remote:
+    url: http://192.168.10.217:8080/v1/chat/completions
+    model: qwen3-coder-30b
 qdrant:
   collection: allm_docs
   host: localhost

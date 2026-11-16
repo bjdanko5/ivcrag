@@ -233,7 +233,13 @@ HTML_INDEX = r"""<!DOCTYPE html>
 
   function checkStatus() {
     fetch('/health', {cache: 'no-store'}).then(function (r) { return r.json(); }).then(function (d) {
-      if (d.status === 'ok' && d.model_loaded) {
+      if (d.status === 'ok' && d.model_loaded && d.llm_ready) {
+        statusEl.textContent = `онлайн · модель загружена (${d.llm_mode}: ${d.llm_model})`;
+        statusEl.style.color = '#2e7d32';
+      } else if (d.status === 'ok' && d.model_loaded && !d.llm_ready) {
+        statusEl.textContent = `онлайн · embeddings OK, LLM недоступна (${d.llm_mode})`;
+        statusEl.style.color = '#f57c00';
+      } else if (d.status === 'ok' && d.model_loaded) {
         statusEl.className = 'status ok';
         statusEl.innerHTML = '<span class="dot"></span>онлайн · модель загружена';
       } else {

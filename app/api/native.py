@@ -74,22 +74,37 @@ def background_rag_pipeline(task_id: str):
         state.log.info(f"[{task_id}] Отправка в llama-server...")
         user_prompt = config.USER_PROMPT_TEMPLATE.format(context=context, question=question)
 
-        resp = requests.post(
-            config.LLAMA_SERVER_URL,
-            json={
-                "model": config.OLLAMA_MODEL,
-                "messages": [
-                    {"role": "system", "content": config.SYSTEM_PROMPT},
-                    {"role": "user", "content": user_prompt},
-                ],
-                "max_tokens": config.MAX_ANSWER_TOKENS,
-                "temperature": 0.3,
-                "top_p": 0.9,
-                "chat_template_kwargs": {"enable_thinking": False},
-            },
-            timeout=config.LLM_TIMEOUT,
-        )
-        resp.raise_for_status()
+        def _post_llm(url: str, model: str):
+            headers = {"Content-Type": "application/json"}
+            if config.LLM_API_KEY:
+                headers["Authorization"] = f"Bearer {config.LLM_API_KEY}"
+            r = requests.post(
+                url,
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": config.SYSTEM_PROMPT},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "max_tokens": config.MAX_ANSWER_TOKENS,
+                    "temperature": 0.3,
+                    "top_p": 0.9,
+                    "chat_template_kwargs": {"enable_thinking": False},
+                },
+                headers=headers,
+                timeout=config.LLM_TIMEOUT,
+            )
+            r.raise_for_status()
+            return r
+
+        try:
+            resp = _post_llm(config.LLM_URL, config.LLM_MODEL)
+        except Exception as e:
+            if config.LLM_MODE == "remote" and config.LLM_FALLBACK_TO_LOCAL:
+                state.log.warning(f"[LLM] remote failed ({e}), fallback to local")
+                resp = _post_llm(config.LLM_LOCAL_URL, config.LLM_LOCAL_MODEL)
+            else:
+                raise
         data = resp.json()
         answer = data["choices"][0]["message"].get("content", "").strip() or "(пустой ответ)"
         state.r_client.set(f"task:answer:{task_id}", answer, ex=config.REDIS_TTL)
@@ -125,6 +140,14 @@ async def get_status(task_id: str):
     return {"status": status}
 
 
+def _llm_ready() -> bool:
+    try:
+        r = requests.get(config.LLM_URL.replace("/chat/completions", "/models"), timeout=5)
+        return r.status_code == 200
+    except Exception:
+        return False
+
+
 @router.get("/health")
 async def health():
     redis_ok = False
@@ -140,6 +163,10 @@ async def health():
         "docs_dir": str(config.DOCS_DIR),
         "docs_dir_exists": config.DOCS_DIR.exists(),
         "tracked_files": len(state.file_hashes),
+        "llm_mode": config.LLM_MODE,
+        "llm_model": config.LLM_MODEL,
+        "llm_url": config.LLM_URL,
+        "llm_ready": _llm_ready(),
     }
 
 

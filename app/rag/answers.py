@@ -476,19 +476,34 @@ def _rag_answer(question: str, max_tokens: int = None) -> dict:
         prompt_to_use = config.SYSTEM_PROMPT
     user_prompt = prompt_to_use.format(context=context, question=question)
 
-    response = state.requests.post(
-        config.LLAMA_SERVER_URL,
-        json={
-            "model": config.OLLAMA_MODEL,
-            "messages": [{"role": "user", "content": user_prompt}],
-            "max_tokens": max_tokens or config.MAX_ANSWER_TOKENS,
-            "temperature": 0.3,
-            "top_p": 0.9,
-            "chat_template_kwargs": {"enable_thinking": False},
-        },
-        timeout=config.LLM_TIMEOUT,
-    )
-    response.raise_for_status()
+    def _post_llm(url: str, model: str):
+        headers = {"Content-Type": "application/json"}
+        if config.LLM_API_KEY:
+            headers["Authorization"] = f"Bearer {config.LLM_API_KEY}"
+        r = state.requests.post(
+            url,
+            json={
+                "model": model,
+                "messages": [{"role": "user", "content": user_prompt}],
+                "max_tokens": max_tokens or config.MAX_ANSWER_TOKENS,
+                "temperature": 0.3,
+                "top_p": 0.9,
+                "chat_template_kwargs": {"enable_thinking": False},
+            },
+            headers=headers,
+            timeout=config.LLM_TIMEOUT,
+        )
+        r.raise_for_status()
+        return r
+
+    try:
+        response = _post_llm(config.LLM_URL, config.LLM_MODEL)
+    except Exception as e:
+        if config.LLM_MODE == "remote" and config.LLM_FALLBACK_TO_LOCAL:
+            state.log.warning(f"[LLM] remote failed ({e}), fallback to local")
+            response = _post_llm(config.LLM_LOCAL_URL, config.LLM_LOCAL_MODEL)
+        else:
+            raise
     data = response.json()
     answer = data["choices"][0]["message"].get("content", "").strip() or "(пустой ответ)"
     return {"answer": answer, "sources": sources, "hits": len(hits)}

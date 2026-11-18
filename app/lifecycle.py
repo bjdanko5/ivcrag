@@ -104,3 +104,27 @@ async def lifespan(app: FastAPI):
 
 
 __all__ = ["lifespan"]
+
+
+# --- errors.log: только WARNING+ от app.* и ivcrag. Ротация 5 МБ x 3. ---
+def _setup_errors_log() -> None:
+    import logging as _logging
+    import os as _os
+    from logging.handlers import RotatingFileHandler as _RFH
+
+    path = _os.getenv("IVCRAG_ERRORS_LOG", "logs/errors.log")
+    _os.makedirs(_os.path.dirname(path) or ".", exist_ok=True)
+    h = _RFH(path, maxBytes=5_000_000, backupCount=3, encoding="utf-8")
+    h.setLevel(_logging.WARNING)
+    h.setFormatter(_logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+    for name in ("ivcrag", "app"):
+        _logging.getLogger(name).addHandler(h)
+
+    # приглушить шумных
+    for name in ("urllib3", "httpcore", "httpx", "uvicorn.access",
+                 "embedding_server.periodic_scan"):
+        _logging.getLogger(name).setLevel(_logging.WARNING)
+
+
+_setup_errors_log()

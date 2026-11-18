@@ -1,14 +1,12 @@
-"""Per-request JSON tracing. Enabled by IVCRAG_TRACE=1.
-
-One JSON per request in IVCRAG_TRACE_DIR/<YYYY-MM-DD>/<HH-MM-SS>_<id>.json
-plus append-only index.jsonl. Stdlib only.
-"""
+"""Per-request JSON tracing. Runtime toggle via /admin/trace (no restart)."""
 import json
 import os
+import threading
 import time
 import uuid
 from pathlib import Path
 
+_lock = threading.Lock()
 TRACE_ON = os.getenv("IVCRAG_TRACE", "0").lower() in ("1", "true", "yes", "on")
 TRACE_DIR = Path(os.getenv("IVCRAG_TRACE_DIR", "logs/traces")).expanduser()
 
@@ -17,6 +15,24 @@ _current = None
 
 def enabled() -> bool:
     return TRACE_ON
+
+
+def set_enabled(on: bool) -> bool:
+    global TRACE_ON, _current
+    with _lock:
+        TRACE_ON = bool(on)
+        if not TRACE_ON:
+            _current = None
+        return TRACE_ON
+
+
+def status() -> dict:
+    return {
+        "enabled": TRACE_ON,
+        "dir": str(TRACE_DIR),
+        "dir_exists": TRACE_DIR.exists(),
+        "current_request": _current["id"] if _current else None,
+    }
 
 
 def begin(query: str, params: dict, client_ip: str = "") -> None:

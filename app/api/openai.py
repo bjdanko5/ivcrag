@@ -46,12 +46,12 @@ async def openai_chat_completions(req: _ChatCompletionRequest):
             state.log.error(traceback.format_exc())
             raise HTTPException(status_code=500, detail=f"RAG error: {exc}")
 
-        tracing.stage("shortcut", {
-            "no_llm": bool(result.get("no_llm")),
-            "hits": result.get("hits"),
-            "sources": result.get("sources"),
-            "answer_chars": len(result.get("answer") or ""),
-        })
+ #       tracing.stage("shortcut", {
+ #           "no_llm": bool(result.get("no_llm")),
+ #           "hits": result.get("hits"),
+ #           "sources": result.get("sources"),
+ #           "answer_chars": len(result.get("answer") or ""),
+ #       })
 
         answer = result["answer"]
         tracing.stage("llm_response", {

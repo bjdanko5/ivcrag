@@ -12,4 +12,5 @@ from app.config import HOST, PORT
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host=HOST, port=PORT, timeout_graceful_shutdown=5)
+    # Reduced graceful shutdown timeout from 5 to 2 seconds for faster service restarts
+    uvicorn.run(app, host=HOST, port=PORT, timeout_graceful_shutdown=2)
